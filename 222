@@ -1,0 +1,1752 @@
+// Trailing Stop Loss with Break Even Functionality
+double breakeven;
+double trailingstop;
+void OnTick()
+{
+   if (OrdersTotal()>0)
+   {
+      for (int i=OrdersTotal()-1; i>=0; i--)
+      {
+         if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         {
+            if (OrderSymbol()==Symbol() && OrderMagicNumber()==MagicNumber)
+            {
+               if (OrderType()==OP_BUY && breakeven<1)
+               {
+                  if (Bid-OrderOpenPrice()>Point*50)
+                  {
+                     breakeven=OrderOpenPrice();
+                     OrderModify(OrderTicket(), OrderOpenPrice(), breakeven, OrderTakeProfit(), 0, Green);
+                  }
+               }
+               if (OrderType()==OP_BUY)
+               {
+                  if (Bid-breakeven>Point*10)
+                  {
+                     breakeven=Bid;
+                     OrderModify(OrderTicket(), breakeven, breakeven, OrderTakeProfit(), 0, Green);
+                  }
+                  if (Bid-OrderOpenPrice()>Point*25)
+                  {
+                     trailingstop=Bid-Point*15;
+                     OrderModify(OrderTicket(), OrderOpenPrice(), trailingstop, OrderTakeProfit(), 0, Red);
+                  }
+               }
+               if (OrderType()==OP_SELL && breakeven<1)
+               {
+                  if (OrderOpenPrice()-Ask>Point*50)
+                  {
+                     breakeven=OrderOpenPrice();
+                     OrderModify(OrderTicket(), OrderOpenPrice(), breakeven, OrderTakeProfit(), 0, Green);
+                  }
+               }
+               if (OrderType()==OP_SELL)
+               {
+                  if (breakeven-Ask>Point*10)
+                  {
+                     breakeven=Ask;
+                     OrderModify(OrderTicket(), breakeven, breakeven, OrderTakeProfit(), 0, Green);
+                  }
+                  if (OrderOpenPrice()-Ask>Point*25)
+                  {
+                     trailingstop=Ask+Point*15;
+                     OrderModify(OrderTicket(), OrderOpenPrice(), trailingstop, OrderTakeProfit(), 0, Red);
+                  }
+               }
+            }
+         }
+      }
+   }
+}
+import MetaTrader5 as mt5
+import numpy as np
+# Connect to MetaTrader 5 terminal
+if not mt5.initialize():
+    print("initialize() failed, error code =", mt5.last_error())
+    quit()
+# Define symbol and timeframe
+symbol = "EURUSD"
+timeframe = mt5.TIMEFRAME_D1
+# Get historical data
+bars = mt5.copy_rates_from_pos(symbol, timeframe, 0, 1000)
+# Calculate 25 EMA
+ema25 = np.zeros(len(bars))
+ema25 = talib.EMA(bars[:, 4], timeperiod=25)
+# Calculate 50 RSI
+rsi50 = np.zeros(len(bars))
+rsi50 = talib.RSI(bars[:, 4], timeperiod=50)
+# Determine buy/sell signals
+signal = np.zeros(len(bars))
+for i in range(1, len(bars)):
+    if ema25[i] > ema25[i - 1] and rsi50[i] > 50:
+        signal[i] = 1
+    elif ema25[i] < ema25[i - 1] and rsi50[i] < 50:
+        signal[i] = -1
+# Close connection to MetaTrader 5 terminal
+mt5.shutdown()
+
+// Define variables
+double ma25 = iMA(NULL, 0, 25, 0, MODE_EMA, PRICE_CLOSE, 0); // 25 EMA
+double rsi50 = iRSI(NULL, 0, 50, PRICE_CLOSE, 0); // 50 RSI
+// Check for buy signal
+if (Close[1] < ma25 && Close[0] > ma25 && rsi50 > 50) {
+    // Place buy order
+    double lotSize = calculateLotSize(1); // 1% risk
+    double stopLoss = ma25 - (ma25 * 0.02); // 2% stop loss
+    double takeProfit = Close[0] + (Close[0] - ma25); // trailing take profit
+    OrderSend(Symbol(), OP_BUY, lotSize, Ask, 0, stopLoss, takeProfit, "Buy Order", MagicNumber, 0, Green);
+}
+// Check for sell signal
+if (Close[1] > ma25 && Close[0] < ma25 && rsi50 < 50) {
+    // Place sell order
+    double lotSize = calculateLotSize(1); // 1% risk
+    double stopLoss = ma25 + (ma25 * 0.02); // 2% stop loss
+    double takeProfit = Close[0] - (ma25 - Close[0]); // trailing take profit
+    OrderSend(Symbol(), OP_SELL, lotSize, Bid, 0, stopLoss, takeProfit, "Sell Order", MagicNumber, 0, Red);
+}
+import MetaTrader5 as mt5
+def calculate_lot_size(risk_reward_ratio, entry_price):
+    account_info = mt5.account_info()
+    account_balance = account_info.balance
+    max_risk_amount = account_balance * 0.01
+    stop_loss_distance_in_pips = max_risk_amount / risk_reward_ratio
+    lot_size = stop_loss_distance_in_pips / ((entry_price - stop_loss_distance_in_pips) * mt5.symbol_info_tick(mt5.symbol_info("EURUSD").name).tick_size)
+    rounded_lot_size = round(lot_size, 2)
+    return rounded_lot_size
+
+def calculate_trailing_stop_loss(entry_price, current_price, trailing_stop_loss_percentage):
+    trailing_stop_loss = entry_price * (1 - trailing_stop_loss_percentage/100)
+    if trailing_stop_loss < current_price:
+        return current_price - trailing_stop_loss
+    else:
+        return 0
+// Initial stop loss
+double initialStopLoss = price - (entryPrice + (entryPrice * 0.02));
+// If price moves in favor by 2%, move stop loss to entry price
+if (price >= entryPrice * 1.02) {
+  initialStopLoss = entryPrice;
+}
+// Trailing stop loss
+double trail = price - (entryPrice + (entryPrice * 0.01));
+// If price moves in favor by 1%, move trailing stop loss
+if (price >= entryPrice * 1.01) {
+  trail = price - (entryPrice * 1.01);
+}
+// Determine if we should move to break even
+if (trail >= initialStopLoss) {
+  // Move stop loss to entry price
+  initialStopLoss = entryPrice;
+}
+
+class TrailingStopLoss:
+    def __init__(self, symbol, stop_loss, trailing_stop):
+        self.symbol = symbol
+        self.stop_loss = stop_loss
+        self.trailing_stop = trailing_stop
+        self.current_price = get_current_price(self.symbol)
+        self.stop_loss_price = self.current_price - self.stop_loss
+        self.trailing_stop_price = self.current_price - self.trailing_stop
+        self.profit_price = self.current_price + self.trailing_stop
+        self.position_opened = False
+    def check_stop_loss(self):
+        if get_current_price(self.symbol) <= self.stop_loss_price:
+            close_position(self.symbol)
+    def check_trailing_stop(self):
+        if get_current_price(self.symbol) >= self.trailing_stop_price:
+            self.trailing_stop_price = get_current_price(self.symbol) - self.trailing_stop
+            update_stop_loss(self.symbol, self.trailing_stop_price)
+    def check_profit(self):
+        if get_current_price(self.symbol) >= self.profit_price:
+            update_stop_loss(self.symbol, self.profit_price)
+    def open_position(self, lot_size, direction):
+        if not self.position_opened:
+            self.position_opened = True
+            open_order(self.symbol, lot_size, direction)
+    def close_position(self):
+        if self.position_opened:
+            self.position_opened = False
+            close_order(self.symbol)
+    def update_stop_loss(self, new_price):
+        self.stop_loss_price = new_price
+        update_order(self.symbol, self.stop_loss_price)
+double breakEven = 0.0;
+double currentPrice = MarketInfo(Symbol(), MODE_BID);
+double openPrice = OrderOpenPrice();
+if (OrderType() == OP_BUY) {
+    breakEven = openPrice + (OrderStopLoss() - openPrice);
+    if (currentPrice >= breakEven && breakEven > openPrice) {
+        OrderModify(OrderTicket(), OrderOpenPrice(), 0.0, breakEven, 0, Green);
+    }
+} else if (OrderType() == OP_SELL) {
+    breakEven = openPrice - (openPrice - OrderStopLoss());
+    if (currentPrice <= breakEven && breakEven < openPrice) {
+        OrderModify(OrderTicket(), OrderOpenPrice(), 0.0, breakEven, 0, Red);
+    }
+}
+
+// Define variables
+double ema25, ema50, rsi;
+int fastma_period = 25;
+int slowma_period = 50;
+int rsi_period = 14;
+// Calculate EMAs and RSI
+ema25 = iMA(_Symbol, PERIOD_H1, fastma_period, 0, MODE_EMA, PRICE_CLOSE, 0);
+ema50 = iMA(_Symbol, PERIOD_H1, slowma_period, 0, MODE_EMA, PRICE_CLOSE, 0);
+rsi = iRSI(_Symbol, PERIOD_H1, rsi_period, PRICE_CLOSE, 0);
+// Check for buy signal
+if (ema25 > ema50 && rsi > 50) {
+    // Place buy order
+    OrderSend(_Symbol, OP_BUY, 0.01, Ask, 3, Bid - StopLoss*Point, Bid + TakeProfit*Point, "Buy order", MagicNumber, 0, Green);
+}
+// Check for sell signal
+if (ema25 < ema50 && rsi < 50) {
+    // Place sell order
+    OrderSend(_Symbol, OP_SELL, 0.01, Bid, 3, Ask + StopLoss*Point, Ask - TakeProfit*Point, "Sell order", MagicNumber, 0, Red);
+}
+
+// Trailing Stop Loss Function
+void TrailingStopLoss(double OrderTicket)
+{
+    double TrailingStop = 0;
+    double TrailingStep = 0;
+    double OrderPrice = OrderOpenPrice();
+    double CurrentPrice = 0;
+   
+    // Set Trailing Stop and Trailing Step according to the order type (Buy or Sell)
+    if (OrderType() == OP_BUY)
+    {
+        TrailingStop = OrderPrice - (OrderStopLoss() * Point);
+        TrailingStep = TrailingStopLossDistance * Point;
+    }
+    else if (OrderType() == OP_SELL)
+    {
+        TrailingStop = OrderPrice + (OrderStopLoss() * Point);
+        TrailingStep = TrailingStopLossDistance * Point;
+    }
+   
+    // If current price is above trailing stop loss, update trailing stop loss
+    if (OrderType() == OP_BUY)
+    {
+        CurrentPrice = Ask;
+        if (CurrentPrice > TrailingStop + TrailingStep)
+        {
+            TrailingStop = CurrentPrice - TrailingStep;
+            OrderModify(OrderTicket, OrderOpenPrice(), TrailingStop, OrderTakeProfit(), 0, Blue);
+        }
+    }
+    else if (OrderType() == OP_SELL)
+    {
+        CurrentPrice = Bid;
+        if (CurrentPrice < TrailingStop - TrailingStep)
+        {
+            TrailingStop = CurrentPrice + TrailingStep;
+            OrderModify(OrderTicket, OrderOpenPrice(), TrailingStop, OrderTakeProfit(), 0, Red);
+        }
+    }
+}
+
+import MetaTrader5 as mt5
+# connecting to MetaTrader 5 platform
+if not mt5.initialize():
+    print("initialize() failed, error code =",mt5.last_error())
+    quit()
+# setting the stop loss and take profit values for a trade
+stop_loss = mt5.symbol_info_tick("EURUSD").ask - 0.002  # assuming 2 pips stop loss
+take_profit = mt5.symbol_info_tick("EURUSD").ask + 0.004  # assuming 4 pips take profit
+trade_volume = 0.01  # assuming 0.01 lot size for the trade
+# opening the trade
+result = mt5.order_send("EURUSD", mt5.ORDER_TYPE_BUY, trade_volume, mt5.symbol_info_tick("EURUSD").ask, 0, stop_loss, take_profit, "trade comment")
+if result.retcode != mt5.TRADE_RETCODE_DONE:
+    print("order_send failed, error code =",result.retcode)
+    print("order_send failed, comment =",result.comment)
+else:
+    print("order_send done, ", result)
+# checking the trade status
+trade_result = mt5.order_check(result.order)
+if trade_result.status == mt5.ORDER_STATUS_OPEN:
+    # modifying the stop loss to break even
+    result = mt5.order_modify(trade_result.order, mt5.symbol_info_tick("EURUSD").bid, 0, stop_loss, take_profit, "modify comment")
+   
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print("order_modify failed, error code =",result.retcode)
+        print("order_modify failed, comment =",result.comment)
+    else:
+        print("order_modify done, ", result)
+# disconnecting from MetaTrader 5 platform
+mt5.shutdown()
+// Set maximum drawdown limit
+var maxDrawdownLimit = 0.02;
+// Get account balance
+var accountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+// Calculate maximum permissible loss
+var maxPermissibleLoss = accountBalance * maxDrawdownLimit;
+// Get current account equity
+var accountEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+// Calculate current loss
+var currentLoss = accountBalance - accountEquity;
+// Check if current loss exceeds maximum permissible loss
+if (currentLoss > maxPermissibleLoss) {
+        // Close all open positions
+        for (var i = OrdersTotal() - 1; i >= 0; i--) {
+                if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+                        OrderClose(OrderTicket(), OrderLots(), Bid, 3, Red);
+                }
+        }
+        
+        // Send notification to user
+        SendNotification("Maximum drawdown limit reached");
+}
+def calculate_max_drawdown(prev_balance, current_balance):
+    max_balance = prev_balance
+    max_drawdown = 0
+   
+    if current_balance > max_balance:
+        max_balance = current_balance
+    else:
+        drawdown = (max_balance - current_balance) / max_balance * 100
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+   
+    return max_drawdown
+def check_max_drawdown(prev_balance, current_balance):
+    max_drawdown = calculate_max_drawdown(prev_balance, current_balance)
+   
+    if max_drawdown > 2:
+        # Close all open trades and stop trading
+        # logic to be added here
+   
+    return
+import MetaTrader5 as mt5
+def max_drawdown():
+    '''Calculates the maximum drawdown of the account balance'''
+    account_info = mt5.account_info()
+    balance = account_info[5]
+    equity = account_info[6]
+    max_equity = equity
+    max_drawdown = 0
+    if mt5.history_select(0, mt5.TIMEFRAME_D1) == True:
+        history_rates = mt5.copy_rates_from_pos(mt5.symbol_info_tick(_), mt5.TIMEFRAME_D1, 0, 1000)
+        for i in range(len(history_rates)):
+            if history_rates[i][2] > max_equity:
+                max_equity = history_rates[i][2]
+            drawdown = (max_equity - history_rates[i][2])/max_equity * 100
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+    return max_drawdown
+def compare_drawdown():
+    '''Compares the maximum drawdown with the 2% limit'''
+    max_drawdown_percent = max_drawdown()
+    if max_drawdown_percent > 2:
+        close_all_trades()
+        stop_trading()
+def close_all_trades():
+    '''Closes all open trades'''
+    positions = mt5.position_get()
+    for position in positions:
+        if position.type == mt5.ORDER_TYPE_BUY:
+            action = mt5.ORDER_TYPE_SELL
+        else:
+            action = mt5.ORDER_TYPE_BUY
+        result = mt5.order_send(position.symbol, position.volume, action, mt5.ORDER_TYPE_CLOSE, position.price, 0,0)
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            print("Order close failed. Error code:", result.retcode)
+def stop_trading():
+    '''Stops trading for the day'''
+    mt5.shutdown()
+def calc_lot_size(balance, stop_loss_distance, risk_percentage):
+    lot_size = (balance * risk_percentage) / stop_loss_distance
+    return lot_size
+# Import required libraries
+import talib
+import numpy as np
+import pandas as pd
+# Define function to calculate buy/sell signals based on 25 ema and 50 rsi crossing
+def ema_rsi_signal(df):
+  # Calculate 25 ema and 50 rsi
+  ema_25 = talib.EMA(df['Close'], timeperiod=25)
+  rsi_50 = talib.RSI(df['Close'], timeperiod=50)
+  # Calculate buy/sell signals
+  buy_signal = np.where((ema_25 > df['Close']) & (rsi_50 > 50), 1, 0)
+  sell_signal = np.where((ema_25 < df['Close']) & (rsi_50 < 50), -1, 0)
+  # Combine buy and sell signals
+  signal = buy_signal + sell_signal
+  return signal
+# Example usage
+# Load data into pandas DataFrame
+df = pd.read_csv('data.csv')
+# Calculate buy/sell signals
+signal = ema_rsi_signal(df)
+
+# Function to calculate maximum lot size based on risk percentage and stop loss distance
+def calc_max_lot(risk_pct, stop_loss_dist, balance):
+    risk_amt = (risk_pct / 100) * balance
+    max_lot = (risk_amt / stop_loss_dist) / 10
+    return max_lot
+# Define variables
+risk_percentage = 0.01    # Maximum allowable risk percentage
+stop_loss_distance = 50   # Distance in pips for stop loss
+account_balance = 10000   # Account balance in USD
+stop_loss_value = stop_loss_distance * 0.0001
+# Calculate lot size
+lot_size = ((account_balance * risk_percentage) / stop_loss_value) / 100000
+# Print lot size
+print("The appropriate lot size is:", lot_size)
+risk_percent = 1 # set the risk percent
+stop_loss_distance = 50 # set the stop loss distance in pips
+balance = 5000 # set the account balance
+pip_size = 0.0001 # assuming 4 decimal places
+lot_size = (balance * risk_percent / 100) / (stop_loss_distance * pip_size)
+
+// record entry price for position
+double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+// set buffer for break-even
+double buffer = 20 * Point;
+// check if price has moved in favor of position
+if (PositionType() == POSITION_TYPE_BUY && SymbolInfoDouble(_Symbol, SYMBOL_BID) - entry_price > buffer){
+    // move stop loss to entry price + buffer
+    double sl = entry_price + buffer;
+    PositionModify(POSITION_SL, sl);
+}
+else if (PositionType() == POSITION_TYPE_SELL && entry_price - SymbolInfoDouble(_Symbol, SYMBOL_ASK) > buffer){
+    // move stop loss to entry price - buffer
+    double sl = entry_price - buffer;
+    PositionModify(POSITION_SL, sl);
+}
+ema25 = 25
+rsi50 = 50
+buy_threshold = 70
+sell_threshold = 30
+import MetaTrader5 as mt5
+mt5.initialize()
+symbol = "EURUSD"
+timeframe = mt5.TIMEFRAME_D1
+rates = mt5.copy_rates_from(symbol, timeframe, datetime.now(), 10)
+ema_rates = mt5.ema(symbol, timeframe, ema25, mt5.MA_TYPE_EMA, rates)
+rsi_rates = mt5.rsi(symbol, timeframe, rsi50, rates)
+
+
+# initialize variables
+last_buy_signal = False
+last_sell_signal = False
+# check for buy and sell signals
+for i in range(len(rates)):
+    if ema_rates[i] > rates[i]['open'] and rsi_rates[i] > buy_threshold:
+        if not last_buy_signal:
+            # send buy signal
+            last_buy_signal = True
+            last_sell_signal = False
+            print("Buy Signal")
+    elif ema_rates[i] < rates[i]['open'] and rsi_rates[i] < sell_threshold:
+        if not last_sell_signal:
+            # send sell signal
+            last_sell_signal = True
+            last_buy_signal = False
+            print("Sell Signal")
+
+# clean up
+mt5.shutdown()
+# error handling
+if not mt5.last_error() == "":
+    print(mt5.last_error())
+
+# Import required libraries
+import talib
+import numpy as np
+# Define function to generate buy and sell signals based on 25 ema and 50 crossing on the RSI
+def generate_signals(data):
+    # Calculate 25 ema and 50 crossing on the RSI
+    ema_25 = talib.EMA(data['Close'], timeperiod=25)
+    rsi = talib.RSI(data['Close'])
+    rsi_50 = np.full_like(rsi, 50)
+    # Generate buy and sell signals
+    buy_signal = np.where((ema_25.shift(1) < ema_25) & (rsi.shift(1) < rsi_50.shift(1)) & (rsi > rsi_50), 1, 0)
+    sell_signal = np.where((ema_25.shift(1) > ema_25) & (rsi.shift(1) > rsi_50.shift(1)) & (rsi < rsi_50), 1, 0)
+    return buy_signal, sell_signal
+import numpy as np
+import talib
+def ema_crossing(close, fast_period=25, slow_period=50):
+    fast_ema = talib.EMA(close, fast_period)
+    slow_ema = talib.EMA(close, slow_period)
+    crosses_up = np.where((fast_ema > slow_ema) & (fast_ema.shift() <= slow_ema.shift()))[0]
+    crosses_down = np.where((fast_ema < slow_ema) & (fast_ema.shift() >= slow_ema.shift()))[0]
+    return crosses_up, crosses_down
+def rsi_crossing(close, rsi_period=14, overbought_level=70, oversold_level=30):
+    rsi_values = talib.RSI(close, rsi_period)
+    crosses_overbought = np.where((rsi_values > overbought_level) & (rsi_values.shift() <= overbought_level))[0]
+    crosses_oversold = np.where((rsi_values < oversold_level) & (rsi_values.shift() >= oversold_level))[0]
+    return crosses_overbought, crosses_oversold
+def calculate_lot_size(balance, risk_percentage, stop_loss_distance):
+    # Calculate maximum amount to risk based on account balance and risk percentage
+    max_risk_amount = balance * (risk_percentage / 100)
+    # Calculate lot size using the stop loss distance and max risk amount
+    lot_size = (max_risk_amount / stop_loss_distance) / 10
+    return lot_size
+
+
+# Get current account balance and stop loss distance
+balance = get_current_balance()
+stop_loss_distance = calculate_stop_loss_distance()
+# Set risk percentage to 1%
+risk_percentage = 1
+# Calculate lot size based on inputs
+lot_size = calculate_lot_size(balance, risk_percentage, stop_loss_distance)
+# Place trade with calculated lot size
+place_trade(lot_size)
+
+# Define initial stop loss and take profit values
+initial_stop_loss = 0
+initial_take_profit = 0
+# Define trailing stop loss and break even values
+trailing_stop_loss = 0
+break_even = 0
+# Define current account balance and lot size
+account_balance = 10000
+lot_size = 0.01
+# Define function to update stop loss and take profit levels
+def update_stop_loss_take_profit(price):
+    global initial_stop_loss
+    global initial_take_profit
+    global trailing_stop_loss
+    global break_even
+   
+    # Check if initial stop loss and take profit levels have been set
+    if initial_stop_loss == 0 and initial_take_profit == 0:
+        initial_stop_loss = price - 100
+        initial_take_profit = price + 100
+    else:
+        # Update stop loss and take profit levels based on current price
+        if price > initial_take_profit:
+            trailing_stop_loss = initial_take_profit - 50
+            break_even = initial_take_profit - 50
+            initial_stop_loss = 0
+            initial_take_profit = 0
+        elif price > trailing_stop_loss:
+            trailing_stop_loss = price - 50
+            break_even = initial_take_profit - 50
+# Define function to calculate lot size based on risk management
+def calculate_lot_size(balance, risk):
+    return (balance * risk) / 10000
+# Define function to execute trades
+def execute_trade(action, lot_size, price):
+    global account_balance
+   
+    # Calculate trade cost
+    trade_cost = lot_size * price
+   
+    # Check if there is enough balance to execute trade
+    if action == 'buy' and trade_cost <= account_balance:
+        account_balance -= trade_cost
+        update_stop_loss_take_profit(price)
+    elif action == 'sell' and trade_cost <= account_balance:
+        account_balance += trade_cost
+        update_stop_loss_take_profit(price)
+# Define function to update account balance based on stop loss and take profit levels
+def update_account_balance(price):
+    global account_balance
+    global lot_size
+   
+    # Check if there is an open position
+    if initial_stop_loss != 0 and initial_take_profit != 0:
+        # Check if stop loss level has been reached
+        if price <= initial_stop_loss:
+            account_balance += lot_size * (initial_stop_loss - price)
+            initial_stop_loss = 0
+            initial_take_profit = 0
+        # Check if take profit level has been reached
+        elif price >= initial_take_profit:
+            account_balance += lot_size * (initial_take_profit - price)
+            initial_stop_loss = 0
+            initial_take_profit = 0
+    elif trailing_stop_loss != 0:
+        # Check if trailing stop loss level has been reached
+        if price <= trailing_stop_loss:
+            account_balance += lot_size * (trailing_stop_loss - price)
+            trailing_stop_loss = 0
+    elif break_even != 0:
+        # Check if break even level has been reached
+        if price >= break_even:
+            break_even = 0
+# Define function to simulate price data
+def simulate_price_data():
+    price = 100
+    while True:
+        yield price
+        price += 1
+
+def close_trade_and_stop_trading():
+    # Calculate the current account balance
+    account_balance = get_account_balance()
+    # Calculate the maximum drawdown percentage
+    max_drawdown_percentage = calculate_maximum_drawdown_percentage()
+    # If the maximum drawdown percentage exceeds 2%, close all open trades and stop trading for the day
+    if max_drawdown_percentage > 2.0:
+        # Close all open trades
+        close_all_trades()
+        # Log the message indicating that the trades have been closed
+        log_message("All open trades have been closed due to maximum drawdown percentage exceeding 2%.")
+        # Stop trading for the day
+        stop_trading_for_day()
+        # Log the message indicating that trading has been stopped for the day
+        log_message("Trading has been stopped for the day due to maximum drawdown percentage exceeding 2%.")
+    else:
+        # Log the message indicating that the maximum drawdown percentage is within the acceptable range
+        log_message("Maximum drawdown percentage is within the acceptable range.")
+
+def calculate_lot_size(account_balance, risk_percentage, stop_loss_distance):
+    risk_amount = account_balance * (risk_percentage / 100)
+    lot_size = risk_amount / stop_loss_distance
+    return lot_size
+import MetaTrader5 as mt5
+# define the parameters
+trailing_stop_loss = 50  # in pips
+break_even = 30  # in pips
+# connect to the MetaTrader 5 terminal
+if not mt5.initialize():
+    print("initialize() failed")
+    mt5.shutdown()
+# loop through open positions
+for position in mt5.positions_get():
+    if position.magic == 12345:  # replace with your personal magic number
+        # calculate the break-even level
+        if position.type == mt5.ORDER_TYPE_BUY:
+            break_even_level = position.price_open + break_even * mt5.symbol_info_tick(position.symbol).point
+        else:
+            break_even_level = position.price_open - break_even * mt5.symbol_info_tick(position.symbol).point
+        # set the break-even level
+        mt5.positions_modify(position.ticket, comment="break-even", price=break_even_level)
+        # calculate the trailing stop loss level
+        if position.type == mt5.ORDER_TYPE_BUY:
+            trailing_stop_loss_level = position.price_open + trailing_stop_loss * mt5.symbol_info_tick(position.symbol).point
+        else:
+            trailing_stop_loss_level = position.price_open - trailing_stop_loss * mt5.symbol_info_tick(position.symbol).point
+        # set the trailing stop loss level
+        mt5.positions_modify(position.ticket, comment="trailing stop loss", deviation=trailing_stop_loss_level)
+# disconnect from the MetaTrader 5 terminal
+mt5.shutdown()
+
+// Calculate the 25 EMA
+double ema25 = iMA(Symbol(), 0, 25, 0, MODE_EMA, PRICE_CLOSE, 0);
+// Calculate the 50 RSI
+double rsi50 = iRSI(Symbol(), 0, 50, PRICE_CLOSE, 0);
+// Check if the 25 EMA has crossed above the 50 RSI
+if (ema25 > rsi50 && iMA(Symbol(), 0, 25, 0, MODE_EMA, PRICE_CLOSE, 1) < iRSI(Symbol(), 0, 50, PRICE_CLOSE, 1)) {
+    // Buy signal here
+    // Place your code for opening a long position here
+} else if (ema25 < rsi50 && iMA(Symbol(), 0, 25, 0, MODE_EMA, PRICE_CLOSE, 1) > iRSI(Symbol(), 0, 50, PRICE_CLOSE, 1)) {
+    // Sell signal here
+    // Place your code for opening a short position here
+}
+import MetaTrader5 as mt5
+# Connect to MetaTrader 5
+if not mt5.initialize():
+    print("Failed to initialize MetaTrader 5")
+    quit()
+# Maximum drawdown percentage allowed
+MAX_DRAWDOWN_PERCENTAGE = 2
+# Get the current account balance
+account_info = mt5.account_info()
+account_balance = account_info.balance
+# Calculate the maximum allowable loss for the day
+max_loss = account_balance * (MAX_DRAWDOWN_PERCENTAGE / 100)
+# Calculate the current loss for the day
+current_loss = account_balance - account_info.profit
+# Check if the current loss exceeds the maximum allowable loss
+if current_loss > max_loss:
+    # Close all open trades and stop trading for the day
+    mt5.shutdown()
+# Import necessary packages and libraries
+import MetaTrader5 as mt5
+import pandas as pd
+import numpy as np
+import talib
+# Connect to the MetaTrader 5 platform
+if not mt5.initialize():
+    print("initialize() failed, error code =",mt5.last_error())
+    quit()
+# Set up the parameters for the bot
+lot_size = 0.01
+max_risk = 0.01
+trailing_stop = 10
+break_even = 5
+# Define the main trading function
+def trade(symbol, timeframe):
+    # Set up the data for the analysis
+    rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, 1000)
+    df = pd.DataFrame(rates)
+    df['time'] = pd.to_datetime(df['time'], unit='s')
+    df.set_index('time', inplace=True)
+    df.drop(['spread','real_volume','ticks'], axis=1, inplace=True)
+    # Calculate the indicators for the analysis
+    df['ema25'] = talib.EMA(df['close'], timeperiod=25)
+    df['rsi50'] = talib.RSI(df['close'], timeperiod=50)
+    # Implement the trading strategy
+    for i in range(1, len(df)):
+        # Check if we are in an uptrend or a downtrend
+        uptrend = df['ema25'][i] > df['ema25'][i-1]
+        downtrend = df['ema25'][i] < df['ema25'][i-1]
+        # Check if the RSI is oversold or overbought
+        oversold = df['rsi50'][i] < 30
+        overbought = df['rsi50'][i] > 70
+        # Buy if the conditions are met
+        if uptrend and oversold and df['close'][i] > df['ema25'][i] and df['rsi50'][i] > df['rsi50'][i-1]:
+            # Calculate the lot size based on the maximum risk
+            risk_amount = mt5.account_info().balance * max_risk
+            lot_size = risk_amount / (df['close'][i] - df['ema25'][i])
+            lot_size = round(lot_size, 2)
+            # Place the buy order
+            result = mt5.order_send(symbol=symbol, order_type=mt5.ORDER_TYPE_BUY, volume=lot_size, slippage=3,
+                                     stoploss=df['ema25'][i] - trailing_stop*mt5.symbol_info(symbol).point,
+                                     takeprofit=0, magic=123456, comment="Bot Buy Order")
+            # Set the break even price after the trade
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                mt5.order_modify(result.order, stoploss=df['ema25'][i] + break_even*mt5.symbol_info(symbol).point,
+                                  takeprofit=0, expiration=mt5.ORDER_TIME_GTC, magic=123456)
+        #
+
+import MetaTrader5 as mt5
+def set_daily_loss_limit(balance, daily_loss_limit):
+    # calculate the maximum loss that can be incurred
+    max_loss = balance * daily_loss_limit / 100
+   
+    # set the daily loss limit parameter
+    mt5.terminal_info_trade().daily_balance_drawdown_limit = max_loss
+   
+def compare_drawdown():
+    # check the current drawdown against the daily loss limit
+    balance = mt5.account_info().balance
+    equity = mt5.account_info().equity
+    drawdown = (balance - equity) / balance * 100
+    daily_loss_limit = mt5.terminal_info_trade().daily_balance_drawdown_limit
+    if drawdown >= daily_loss_limit:
+        # close all open positions
+        positions = mt5.positions_get()
+        for position in positions:
+            if position.type == mt5.POSITION_TYPE_BUY:
+                mt5.order_sell(position.symbol, position.volume)
+            elif position.type == mt5.POSITION_TYPE_SELL:
+                mt5.order_buy(position.symbol, position.volume)
+
+def check_daily_loss():
+    # calculate daily loss
+    daily_loss = ((current_balance - previous_balance) / previous_balance) * 100
+    # compare with 2% limit
+    if daily_loss > 2:
+        # close all open trades
+        close_all_trades()
+        # stop trading for the day
+        stop_trading()
+// Assign input variables
+int trendPeriod = 50; // Period for trend analysis
+double trendThreshold = 0.5; // Threshold for trend analysis
+double lotSize = 0.01; // Initial lot size
+double riskPercentage = 1; // Risk percentage per trade
+int slippage = 3; // Maximum allowed slippage
+// Initialize trend analysis variables
+double[] trendValues = new double[trendPeriod];
+double trendSum = 0;
+int trendCount = 0;
+// Loop through historical prices to calculate trend analysis
+for (int i = 0; i < trendPeriod; i++) {
+    double price = iClose(_Symbol, PERIOD_D1, i);
+    trendSum += price;
+    trendCount++;
+    trendValues[i] = price;
+}
+double trendMean = trendSum / trendCount;
+double trendStdDev = 0;
+for (int i = 0; i < trendPeriod; i++) {
+    double deviation = trendValues[i] - trendMean;
+    trendStdDev += deviation * deviation;
+}
+trendStdDev = Math.Sqrt(trendStdDev / trendCount);
+// Check for buy signal
+double ema25 = iMA(_Symbol, PERIOD_D1, 25, 0, MODE_EMA, PRICE_CLOSE, 0);
+double rsi50 = iRSI(_Symbol, PERIOD_D1, 50, PRICE_CLOSE, 0);
+double trendValue = iClose(_Symbol, PERIOD_D1, 0) - trendMean;
+if (ema25 > trendMean + trendThreshold * trendStdDev && rsi50 > 50 && trendValue > trendStdDev) {
+    double stopLoss = iLow(_Symbol, PERIOD_D1, 1) - 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double takeProfit = iClose(_Symbol, PERIOD_D1, 0) + 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double riskAmount = AccountBalance() * riskPercentage / 100;
+    double maxLoss = lotSize * stopLoss;
+    if (maxLoss < riskAmount) {
+        lotSize = riskAmount / stopLoss;
+    }
+    OrderSend(_Symbol, OP_BUY, lotSize, iClose(_Symbol, PERIOD_D1, 0), slippage, stopLoss, takeProfit, "Buy order", 0, 0, Green);
+}
+// Check for sell signal
+if (ema25 < trendMean - trendThreshold * trendStdDev && rsi50 < 50 && trendValue < -trendStdDev) {
+    double stopLoss = iHigh(_Symbol, PERIOD_D1, 1) + 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double takeProfit = iClose(_Symbol, PERIOD_D1, 0) - 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double riskAmount = AccountBalance() * riskPercentage / 100;
+    double maxLoss = lotSize * stopLoss;
+    if (maxLoss < risk
+def check_daily_loss():
+    # calculate daily loss
+    daily_loss = ((current_balance - previous_balance) / previous_balance) * 100
+    # compare with 2% limit
+    if daily_loss > 2:
+        # close all open trades
+        close_all_trades()
+        # stop trading for the day
+        stop_trading()
+
+
+// Assign input variables
+int trendPeriod = 50; // Period for trend analysis
+double trendThreshold = 0.5; // Threshold for trend analysis
+double lotSize = 0.01; // Initial lot size
+double riskPercentage = 1; // Risk percentage per trade
+int slippage = 3; // Maximum allowed slippage
+// Initialize trend analysis variables
+double[] trendValues = new double[trendPeriod];
+double trendSum = 0;
+int trendCount = 0;
+// Loop through historical prices to calculate trend analysis
+for (int i = 0; i < trendPeriod; i++) {
+    double price = iClose(_Symbol, PERIOD_D1, i);
+    trendSum += price;
+    trendCount++;
+    trendValues[i] = price;
+}
+double trendMean = trendSum / trendCount;
+double trendStdDev = 0;
+for (int i = 0; i < trendPeriod; i++) {
+    double deviation = trendValues[i] - trendMean;
+    trendStdDev += deviation * deviation;
+}
+trendStdDev = Math.Sqrt(trendStdDev / trendCount);
+// Check for buy signal
+double ema25 = iMA(_Symbol, PERIOD_D1, 25, 0, MODE_EMA, PRICE_CLOSE, 0);
+double rsi50 = iRSI(_Symbol, PERIOD_D1, 50, PRICE_CLOSE, 0);
+double trendValue = iClose(_Symbol, PERIOD_D1, 0) - trendMean;
+if (ema25 > trendMean + trendThreshold * trendStdDev && rsi50 > 50 && trendValue > trendStdDev) {
+    double stopLoss = iLow(_Symbol, PERIOD_D1, 1) - 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double takeProfit = iClose(_Symbol, PERIOD_D1, 0) + 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double riskAmount = AccountBalance() * riskPercentage / 100;
+    double maxLoss = lotSize * stopLoss;
+    if (maxLoss < riskAmount) {
+        lotSize = riskAmount / stopLoss;
+    }
+    OrderSend(_Symbol, OP_BUY, lotSize, iClose(_Symbol, PERIOD_D1, 0), slippage, stopLoss, takeProfit, "Buy order", 0, 0, Green);
+}
+// Check for sell signal
+if (ema25 < trendMean - trendThreshold * trendStdDev && rsi50 < 50 && trendValue < -trendStdDev) {
+    double stopLoss = iHigh(_Symbol, PERIOD_D1, 1) + 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double takeProfit = iClose(_Symbol, PERIOD_D1, 0) - 2 * iATR(_Symbol, PERIOD_D1, 14, 1);
+    double riskAmount = AccountBalance() * riskPercentage / 100;
+    double maxLoss = lotSize * stopLoss;
+    if (maxLoss < risk
+
+
+def lot_size_calculation(account_balance, stop_loss):
+    # Calculates the maximum lot size based on 1% risk per trade
+    risk_per_trade = account_balance * 0.01
+    lot_size = round(risk_per_trade / stop_loss, 2)
+    return lot_size
+# Get the account balance and stop loss for the current trade
+account_balance = get_account_balance()
+stop_loss = get_stop_loss()
+# Calculate the maximum lot size based on 1% risk per trade
+max_lot_size = lot_size_calculation(account_balance, stop_loss)
+# Open the trade with the calculated lot size
+open_trade(max_lot_size)
+// Define maximum lot size constant
+const double MAX_LOT_SIZE = 0.01;
+// Calculate current lot size using account balance and risk percentage
+double lotSize = AccountBalance() * 0.01;
+// If current lot size exceeds maximum lot size, close all trades
+if (lotSize > MAX_LOT_SIZE) {
+    Print("Current lot size exceeds maximum lot size. Closing all trades.");
+    for (int i = OrdersTotal() - 1; i >= 0; i--) {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+            Print("Closing order ", OrderTicket());
+            OrderClose(OrderTicket(), OrderLots(), Bid, 5, clrRed);
+        }
+    }
+}
+
+import MetaTrader5 as mt5
+import datetime as dt
+import numpy as np
+def close_trades():
+    # Check if there are any open trades
+    if mt5.positions_total() > 0:
+       
+        # Calculate the maximum drawdown percentage
+        account_info = mt5.account_info()
+        equity = account_info.equity
+        balance = account_info.balance
+        max_drawdown = np.max([(balance - p.profit) / balance for p in mt5.positions_get()])
+        max_drawdown_pct = max_drawdown * 100
+       
+        # Check if the maximum drawdown percentage exceeds 2%
+        if max_drawdown_pct > 2:
+            print(f'Maximum drawdown percentage of {max_drawdown_pct:.2f}% exceeded. Closing all trades and stopping trading for the day.')
+           
+            # Close all open trades
+            for position in mt5.positions_get():
+                result = mt5.order_close(position.ticket, position.volume, position.price_current, slippage=50)
+                if result.retcode != mt5.TRADE_RETCODE_DONE:
+                    print(f'Error closing position {position.ticket}. Error code: {result.retcode}')
+           
+            # Stop trading for the day
+            mt5.shutdown()
+            print(f'Trading stopped for the day at {dt.datetime.now()}.')
+           
+        else:
+            print(f'Maximum drawdown percentage of {max_drawdown_pct:.2f}% is within limits. Continuing trading.')
+           
+    else:
+        print('No open trades. Continuing trading.')
+# import necessary libraries and packages
+import MetaTrader5 as mt5
+import math
+# define function to calculate the maximum lot size based on risk percentage
+def calc_max_lot(account_balance, risk_percent):
+    max_lot = (account_balance * risk_percent) / 10000
+    return max_lot
+# connect to MetaTrader 5 platform
+if not mt5.initialize():
+    print("initialize() failed")
+    quit()
+# set up the order parameters
+symbol = "EURUSD"
+lot = calc_max_lot(account_balance, risk_percent) # calculate lot size based on account balance and risk percentage
+price = mt5.symbol_info_tick(symbol).ask
+sl = price - 50 * mt5.symbol_info(symbol).point
+tp = price + 100 * mt5.symbol_info(symbol).point
+type = mt5.ORDER_TYPE_BUY
+magic_number = 12345
+comment = "AgentGPT"
+# send the order to the MetaTrader 5 platform
+result = mt5.order_send(symbol=symbol, type=type, volume=lot, price=price, sl=sl, tp=tp, magic=magic_number, comment=comment)
+# check if the order was executed successfully
+if result.retcode != mt5.TRADE_RETCODE_DONE:
+    print("Order failed to execute")
+else:
+    print("Order executed successfully")
+   
+# disconnect from MetaTrader 5 platform
+mt5.shutdown()
+
+def calculate_lot_size(balance, risk_percent, stop_loss):
+    lot_size = (balance * risk_percent) / (stop_loss * 100)
+    return lot_size
+def determine_lot_size(balance, risk_percent, stop_loss):
+    lot_size = calculate_lot_size(balance, risk_percent, stop_loss)
+    if lot_size > max_lot_size:
+        lot_size = max_lot_size
+    return lot_size
+
+def calculate_lot_size(balance, stop_loss, risk_percentage):
+    lot_size = (balance * risk_percentage) / stop_loss
+    return lot_size
+
+max_lot_size = # insert maximum lot size here
+lot_size = calculate_lot_size(balance, stop_loss, risk_percentage)
+if lot_size > max_lot_size:
+    lot_size = max_lot_size
+# place trade with lot size
+
+
+import time
+# Set the maximum daily loss limit to 2%
+max_loss_limit = 0.02
+# Get the current account balance
+current_balance = account_info.balance
+# Set the target daily loss limit
+target_loss_limit = current_balance * max_loss_limit
+# Keep track of the current day's loss
+current_day_loss = 0
+# Keep track of the previous day's loss
+previous_day_loss = 0
+# A function to check the daily loss limit
+def check_daily_loss_limit():
+    global current_day_loss, previous_day_loss
+   
+    # Get the current account balance
+    current_balance = account_info.balance
+   
+    # Calculate the current day's loss
+    current_day_loss = previous_day_loss + (previous_balance - current_balance)
+   
+    # Check if the daily loss limit has been reached
+    if current_day_loss >= target_loss_limit:
+        # Close all open trades
+        close_all_trades()
+       
+        # Reset the daily loss counters
+        current_day_loss = 0
+        previous_day_loss = 0
+       
+        # Wait for a few seconds to ensure all trades are closed
+        time.sleep(10)
+       
+    # Update the previous day's loss
+    previous_day_loss = current_day_loss
+   
+# A function to close all open trades
+def close_all_trades():
+    for trade in trades:
+        if trade.type == TRADE_TYPE_BUY:
+            sell(trade.magic, trade.volume)
+        elif trade.type == TRADE_TYPE_SELL:
+            buy(trade.magic, trade.volume)
+# A function to calculate the lot size based on risk management
+def calculate_lot_size(stop_loss):
+    # Get the account balance
+    account_balance = account_info.balance
+   
+    # Calculate the lot size based on the stop loss and risk percentage
+    lot_size = (account_balance * 0.01) / (stop_loss * SYMBOL_TICK_SIZE)
+   
+    return lot_size
+# A function to open a buy trade
+def open_buy_trade(lot_size, stop_loss):
+    # Calculate the take profit price based on the 25 ema crossing
+    take_profit = calculate_take_profit()
+   
+    # Calculate the trailing stop loss
+    trailing_stop_loss = calculate_trailing_stop_loss()
+   
+    # Calculate the break even price
+    break_even_price = calculate_break_even_price()
+   
+    # Open the buy trade
+    ticket = buy(lot_size, stop_loss, take_profit, trailing_stop_loss, break_even_price)
+   
+    return ticket
+# A function to open a sell trade
+def open_sell_trade(lot_size, stop_loss):
+    # Calculate the take profit price based on the 25 ema crossing
+    take_profit = calculate_take_profit()
+   
+    # Calculate the trailing stop loss
+    trailing_stop_loss = calculate_trailing_stop_loss()
+   
+    # Calculate the break even price
+    break_even_price = calculate_break_even_price()
+   
+    # Open the sell trade
+    ticket = sell(lot_size, stop_loss, take_profit, trailing_stop_loss, break_even_price)
+   
+    return ticket
+# A function to calculate the take profit price based on
+
+# First, calculate the current drawdown percentage
+drawdown_pct = ((current_balance - max_balance) / max_balance) * 100
+# If the drawdown percentage is greater than 2%, close all open trades and stop trading for the day
+if drawdown_pct > 2:
+    # Close all open trades using the MetaTrader 5 API
+    for trade in mt5.positions_get():
+        result = mt5.order_close(trade.ticket, trade.volume, mt5.ORDER_TYPE_CLOSE_BY)
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"Error closing trade {trade.ticket}: {result.comment}")
+    # Stop trading for the day by setting a flag or exiting the program
+    trading_active = False
+# Define the function to calculate maximum lot size
+def calculate_max_lot_size(account_balance):
+    max_risk = 0.01  # Maximum risk per trade (1% of account balance)
+    stop_loss_pips = your_stop_loss_pips  # Change this to your desired stop loss in pips
+    pip_value = your_pip_value  # Change this to your pip value for the currency pair being traded
+    max_lot_size = (account_balance * max_risk) / (stop_loss_pips * pip_value)
+    return max_lot_size
+# Call the function to get the maximum lot size for the current account balance
+max_lot_size = calculate_max_lot_size(account_balance)
+# Use the maximum lot size to place the trade
+# Replace "your_lot_size" with the actual lot size you want to use
+if your_lot_size <= max_lot_size:
+    # Place the trade with the desired lot size
+else:
+    # Reduce the lot size to the maximum allowed size and place the trade
+def calculate_daily_loss_limit(account_balance):
+    daily_loss_limit = account_balance * 0.02
+    return daily_loss_limit
+
+
+def compare_drawdown():
+    current_drawdown = calculate_drawdown()
+    daily_loss_limit = calculate_daily_loss_limit(account_balance)
+   
+    if current_drawdown > daily_loss_limit:
+        close_all_trades()
+        return
+   
+    # rest of the function
+    ...
+def close_all_trades():
+    # code to close all open trades
+    ...
+# main AI agent code
+account_balance = get_account_balance()
+compare_drawdown()
+# rest of the code
+...
+
+
+# Calculate lot size based on risk
+def calculate_lot_size(balance, risk):
+    lot_size = balance * risk / 100 / 1000
+    return lot_size
+# Check if price is above EMA 25 and RSI is above 50
+def is_buy_signal(price, ema25, rsi50):
+    if price > ema25 and rsi50 > 50:
+        return True
+    else:
+        return False
+# Check if price is below EMA 25 and RSI is below 50
+def is_sell_signal(price, ema25, rsi50):
+    if price < ema25 and rsi50 < 50:
+        return True
+    else:
+        return False
+# Calculate stop loss
+def calculate_stop_loss(entry_price, risk, direction):
+    if direction == "buy":
+        stop_loss = entry_price - entry_price * risk / 100
+    else:
+        stop_loss = entry_price + entry_price * risk / 100
+    return stop_loss
+# Calculate take profit
+def calculate_take_profit(entry_price, reward, direction):
+    if direction == "buy":
+        take_profit = entry_price + entry_price * reward / 100
+    else:
+        take_profit = entry_price - entry_price * reward / 100
+    return take_profit
+# Calculate break even
+def calculate_break_even(entry_price, direction):
+    if direction == "buy":
+        break_even = entry_price + 0.0001
+    else:
+        break_even = entry_price - 0.0001
+    return break_even
+# Check if stop loss should be moved to break even
+def should_move_to_break_even(price, stop_loss, direction):
+    if direction == "buy" and price > stop_loss:
+        return True
+    elif direction == "sell" and price < stop_loss:
+        return True
+    else:
+        return False
+# Calculate trend direction
+def calculate_trend_direction(price, ema25):
+    if price > ema25:
+        return "up"
+    elif price < ema25:
+        return "down"
+    else:
+        return "flat"
+
+# Check if trend agrees with signal
+def is_trend_confirmation(price, ema25):
+    trend_direction = calculate_trend_direction(price, ema25)
+    if trend_direction == "up" and price > ema25:
+        return True
+    elif trend_direction == "down" and price < ema25:
+        return True
+    else:
+        return False
+
+# Check if price is above EMA 25, RSI is above 50, and trend agrees with signal
+def is_buy_signal(price, ema25,
+import MetaTrader5 as mt5
+ 
+# connect to MetaTrader 5 terminal
+if not mt5.initialize():
+    print("initialize() failed, error code =", mt5.last_error())
+    quit()
+ 
+# set stop loss on open positions with trailing stop
+position = mt5.positions_get(symbol="EURUSD")
+stop_loss_points = 50 # update this to desired value
+trailing_stop_points = 20 # update this to desired value
+if position:
+    result = mt5.positions_set_trailing_stop(ticket=position[0].ticket, stoploss=stop_loss_points, trailing_stop=trailing_stop_points)
+    if result:
+        print("Trailing stop loss successfully set.")
+    else:
+        print("Failed to set trailing stop loss, error code =", mt5.last_error())
+ 
+# disconnect from MetaTrader 5 terminal
+mt5.shutdown()
+
+# Importing necessary libraries
+import MetaTrader5 as mt5
+import numpy as np
+# Defining function for trend analysis
+def trend_analysis(symbol, timeframe):
+   
+    # Getting the close price data
+    price_data = mt5.copy_rates_from_pos(symbol, timeframe, 0, 200)
+    close_price = np.array([x.close for x in price_data])
+   
+    # Calculating the 200 EMA
+    ema_200 = talib.EMA(close_price, timeperiod=200)
+   
+    # Calculating the current price
+    current_price = mt5.symbol_info_tick(symbol).last
+   
+    # Checking the trend
+    if current_price > ema_200[-1]:
+        return "Uptrend"
+    elif current_price < ema_200[-1]:
+        return "Downtrend"
+    else:
+        return "No Trend"
+# Implementing the trend analysis in the main trading function
+def trading_function():
+   
+    # Defining the risk and lot size
+    risk = 0.01
+    account_balance = mt5.account_info().balance
+    lot_size = (account_balance * risk) / 1000
+   
+    # Getting the symbol and timeframe
+    symbol = "EURUSD"
+    timeframe = mt5.TIMEFRAME_H1
+   
+    # Getting the buy and sell signals
+    rsi_50 = talib.RSI(mt5.copy_rates_from_pos(symbol, timeframe, 0, 50).close, timeperiod=14)
+    ema_25 = talib.EMA(mt5.copy_rates_from_pos(symbol, timeframe, 0, 25).close, timeperiod=25)
+   
+    # Checking the trend
+    trend = trend_analysis(symbol, timeframe)
+   
+    # Placing the order based on the signals and trend
+    if rsi_50[-1] > 50 and ema_25[-1] > ema_25[-2] and trend == "Uptrend":
+        mt5.positions_get(symbol=symbol)
+        mt5.order_send(symbol=symbol, type=mt5.ORDER_TYPE_BUY, volume=lot_size, slippage=3, magic=12345)
+   
+    elif rsi_50[-1] < 50 and ema_25[-1] < ema_25[-2] and trend == "Downtrend":
+        mt5.positions_get(symbol=symbol)
+        mt5.order_send(symbol=symbol, type=mt5.ORDER_TYPE_SELL, volume=lot_size, slippage=3, magic=12345)
+# Calling the main trading function
+Trading_function
+
+
+ema_slope = ta.LINEARREG_SLOPE(ta.EMA(close, 25), timeperiod=20)
+rsi_slope = ta.LINEARREG_SLOPE(ta.RSI(close, timeperiod=50), timeperiod=20)
+
+
+trend_score = (0.7 * ema_slope) + (0.3 * rsi_slope)
+threshold = 0.5
+if abs(trend_score) > threshold:
+    # Generate buy or sell signal based on the 25 EMA and 50 RSI crossovers
+
+def calculate_lot_size(account_balance, risk_percent):
+    lot_size = (account_balance * risk_percent) / 10000.0
+    return lot_size
+def risk_management_system(account_balance, risk_percent):
+    lot_size = calculate_lot_size(account_balance, risk_percent)
+    # Use lot size to place trades
+
+
+# Get current account balance
+account_balance = account.Balance()
+# Calculate maximum lot size based on risk percentage and stop loss distance
+max_lot_size = (account_balance * risk_percentage) / stop_loss_distance
+# Calculate lot size based on maximum lot size and account balance
+if max_lot_size > account_balance:
+    lot_size = account_balance / 100000  # assuming 1 lot = 100,000 units
+else:
+    lot_size = max_lot_size / 100000  # assuming 1 lot = 100,000 units
+# Submit order with calculated lot size and stop loss distance
+submit_order(lot_size, stop_loss_distance)
+import MetaTrader5 as mt5
+import numpy as np
+def calculate_lot_size(balance, risk_percent, stop_loss):
+    lot_size = round((balance * risk_percent) / stop_loss, 2)
+    return lot_size
+def adjust_risk(volatility, balance, risk_percent):
+    max_daily_loss = balance * 0.02
+    stop_loss = round(volatility * 2, 2)
+    lot_size = calculate_lot_size(balance, risk_percent, stop_loss)
+    if lot_size > balance * 0.01:
+        lot_size = round(balance * 0.01, 2)
+    new_risk_percent = round((lot_size * stop_loss) / balance, 4)
+    return new_risk_percent
+# connect to MetaTrader 5
+if not mt5.initialize():
+    print("MetaTrader 5 initialization failed")
+    mt5.shutdown()
+# get daily ATR using the symbol and timeframe of interest
+symbol = "EURUSD"
+timeframe = mt5.TIMEFRAME_D1
+atr = mt5.iATR(symbol, timeframe, 14)
+# calculate daily volatility as a percentage of the current price
+volatility = round((atr / mt5.symbol_info_tick(symbol).ask) * 100, 2)
+# get current account balance
+account_info = mt5.account_info()
+balance = account_info.balance
+# calculate new risk percentage based on volatility and current risk percentage
+risk_percent = 0.01 # initial risk percentage
+new_risk_percent = adjust_risk(volatility, balance, risk_percent)
+print("Current risk percentage:", risk_percent)
+print("New risk percentage based on volatility:", new_risk_percent)
+# shut down MetaTrader 5
+mt5.shutdown()
+def get_trend_direction(data):
+    ema200 = talib.EMA(data['Close'], timeperiod=200)
+    if data['Close'].iloc[-1] > ema200.iloc[-1]:
+        return 'uptrend'
+    else:
+        return 'downtrend'
+import talib
+def get_lot_size(balance, stop_loss):
+    risk_amount = balance * 0.01
+    lot_size = risk_amount / stop_loss
+    return lot_size
+def get_signals(data):
+    ema25 = talib.EMA(data['Close'], timeperiod=25)
+    ema50 = talib.EMA(data['Close'], timeperiod=50)
+    rsi50 = talib.RSI(data['Close'], timeperiod=50)
+    trend = get_trend_direction(data)
+    signal = None
+    if ema25.iloc[-1] > ema50.iloc[-1] and rsi50.iloc[-1] > 50 and trend == 'uptrend':
+        signal = 'buy'
+    elif ema25.iloc[-1] < ema50.iloc[-1] and rsi50.iloc[-1] < 50 and trend == 'downtrend':
+        signal = 'sell'
+    return signal
+def execute_trade(signal, balance, stop_loss, current_price):
+    if signal == 'buy':
+        lot_size = get_lot_size(balance, stop_loss)
+        take_profit = current_price + (2 * stop_loss)
+        stop_loss_price = current_price - stop_loss
+        return 'buy', lot_size, take_profit, stop_loss_price
+    elif signal == 'sell':
+        lot_size = get_lot_size(balance, stop_loss)
+        take_profit = current_price - (2 * stop_loss)
+        stop_loss_price = current_price + stop_loss
+        return 'sell', lot_size, take_profit, stop_loss_price
+def main():
+    # Initialize variables
+    balance = 1000
+    stop_loss = 20
+    data = get_historical_data()
+    last_price = data['Close'].iloc[-1]
+    # Get signals
+    signal = get_signals(data)
+    # Execute trade
+    if signal:
+        trade_type, lot_size, take_profit, stop_loss_price = execute_trade(signal, balance, stop_loss, last_price)
+        # Place order with MetaTrader 5
+        place_order(trade_type, lot_size, take_profit, stop_loss_price)
+if __name__ == '__main__':
+    main()
+
+import numpy as np
+# Calculate standard deviation of price data
+def calculate_std_dev(prices):
+    return np.std(prices)
+# Calculate the appropriate lot size based on risk percentage and stop loss
+def calculate_lot_size(balance, risk_percentage, stop_loss):
+    lot_size = (balance * (risk_percentage / 100)) / (stop_loss * 100)
+    return lot_size
+# Adjust risk percentage based on market volatility
+def adjust_risk_percentage(prices, balance, current_risk_percentage, stop_loss):
+    std_dev = calculate_std_dev(prices)
+    if std_dev > 0:
+        max_loss = balance * 0.02
+        new_risk_percentage = (max_loss / (std_dev * stop_loss * 100)) * 100
+        if new_risk_percentage < current_risk_percentage:
+            return new_risk_percentage
+    return current_risk_percentage
+
+// Define maximum lot size as a constant
+const double MAX_LOT_SIZE = 0.01;
+// Get current lot size and calculate required margin
+double lotSize = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+double margin = SymbolInfoDouble(_Symbol, SYMBOL_MARGIN_REQUIRED);
+// Check if lot size exceeds maximum
+if (lotSize > MAX_LOT_SIZE) {
+    // Calculate number of lots to close
+    double lotsToClose = lotSize - MAX_LOT_SIZE;
+   
+    // Close excess lots
+    bool result = OrderClose(_Ticket, lotsToClose, Bid, 3, clrRed);
+   
+    // Print debug information
+    if (result) {
+        Print("Closed ", lotsToClose, " lots due to over-leveraging");
+    } else {
+        Print("Failed to close excess lots, error ", GetLastError());
+    }
+}
+
+
+import pandas as pd
+import numpy as np
+# Load historical market data
+df = pd.read_csv('market_data.csv')
+# Calculate daily price movements
+daily_returns = df['Close'].pct_change()
+# Calculate historical volatility using standard deviation of daily returns
+volatility = np.std(daily_returns)
+# Calculate new risk percentage based on volatility
+if volatility < 0.01:
+    risk_percentage = 0.5  # Low volatility, higher risk allowed
+elif volatility < 0.02:
+    risk_percentage = 0.3  # Medium volatility, moderate risk allowed
+else:
+    risk_percentage = 0.1  # High volatility, low risk allowed
+
+// Define the break-even point
+double breakEven = 0;
+// Define the trailing stop loss
+double trailingStop = 0;
+// Define the lot size for risk management
+double lotSize = 0;
+// Determine the lot size based on the account balance risk management goal
+if (accountBalance * 0.01 * 0.02 >= stopLoss) {
+    lotSize = (accountBalance * 0.01 * 0.02) / stopLoss;
+} else {
+    lotSize = (accountBalance * 0.01) / stopLoss;
+}
+// Use higher time frame confirmation to buy and sell
+if (higherTimeframeConfirmation) {
+    if (ema25Crossing && rsi50Crossing) {
+        // Buy signal
+        double entryPrice = ask;
+        double stopLossPrice = entryPrice - stopLoss * Point;
+        double takeProfitPrice = entryPrice + takeProfit * Point;
+        // Set the initial break-even point and trailing stop loss
+        breakEven = entryPrice;
+        trailingStop = entryPrice - trailingStopLoss * Point;
+        // Place the buy order using the calculated lot size
+        OrderSend(symbol, OP_BUY, lotSize, entryPrice, slippage, stopLossPrice, takeProfitPrice, "Buy", MagicNumber, 0, clrGreen);
+    }
+    if (ema25Crossing && rsi50Crossing) {
+        // Sell signal
+        double entryPrice = bid;
+        double stopLossPrice = entryPrice + stopLoss * Point;
+        double takeProfitPrice = entryPrice - takeProfit * Point;
+        // Set the initial break-even point and trailing stop loss
+        breakEven = entryPrice;
+        trailingStop = entryPrice + trailingStopLoss * Point;
+        // Place the sell order using the calculated lot size
+        OrderSend(symbol, OP_SELL, lotSize, entryPrice, slippage, stopLossPrice, takeProfitPrice, "Sell", MagicNumber, 0, clrRed);
+    }
+}
+// Update the break-even point and trailing stop loss
+if (OrderSelect(ticket, SELECT_BY_TICKET)) {
+    if (OrderType() == OP_BUY) {
+        if (bid >= breakEven + trailingStop * Point) {
+            // Update the break-even point and trailing stop loss
+            breakEven = bid;
+            trailingStop = trailingStop + trailingStopLoss * Point;
+            // Modify the stop loss and take profit levels
+            OrderModify(ticket, entryPrice, stopLossPrice, takeProfitPrice, 0, clrGreen);
+        }
+    }
+    if (OrderType() == OP_SELL) {
+        if (ask <= breakEven - trailingStop * Point) {
+            // Update the break-even point and trailing stop loss
+            breakEven = ask;
+            trailingStop = trailingStop + trailingStopLoss * Point;
+            // Modify the stop loss and take profit levels
+            OrderModify(ticket, entryPrice, stopLossPrice, takeProfitPrice, 0, clrRed);
+        }
+    }
+}
+
+
+// Define variables for ATR and stop loss distance
+double atr;
+double stop_loss_distance;
+// Define input parameters for ATR and stop loss
+input int atr_period = 14;
+input int stop_loss_multiple = 2;
+// Calculate ATR
+atr = iATR(_Symbol, PERIOD_D1, atr_period, 0);
+// Determine stop loss distance based on ATR and multiple
+stop_loss_distance = stop_loss_multiple * atr;
+// Set stop loss
+OrderModify(OrderTicket(), 0, NormalizeDouble(Bid - stop_loss_distance * _Point, _Digits), 0, 0, CLR_NONE);
+import MetaTrader5 as mt5
+import talib as ta
+import numpy as np
+# connect to MetaTrader 5
+if not mt5.initialize():
+    print("initialize() failed, error code =", mt5.last_error())
+    quit()
+# set symbol and timeframe
+symbol = "EURUSD"
+timeframe = mt5.TIMEFRAME_D1
+# get ATR value
+atr = ta.ATR(mt5.copy_rates_from_pos(symbol, timeframe, 0, 14), 14)[-1]
+# calculate stop loss distance
+stop_loss_distance = atr * 2
+# adjust stop loss distance based on account balance
+account_balance = mt5.account_info().balance
+if stop_loss_distance * lot_size * 100000 > account_balance * 0.01:
+    stop_loss_distance = account_balance * 0.01 / (lot_size * 100000)
+# set stop loss
+mt5.positions_get(symbol=symbol)
+if order.type == mt5.ORDER_TYPE_BUY:
+    stop_loss_price = order.price - stop_loss_distance
+else:
+    stop_loss_price = order.price + stop_loss_distance
+mt5.orders_send(mt5.ORDER_TYPE_STOP_LOSS, symbol, lot_size, stop_loss_price)
+# disconnect from MetaTrader 5
+mt5.shutdown()
+# Import necessary libraries
+import MetaTrader5 as mt5
+import pandas as pd
+# Define trend analysis algorithm
+def trend_analysis(symbol, timeframe):
+    # Get historical data
+    data = mt5.copy_rates_from_pos(symbol, timeframe, 0, 100)
+    df = pd.DataFrame(data)
+    df['time'] = pd.to_datetime(df['time'], unit='s')
+    df.set_index('time', inplace=True)
+   
+    # Calculate 25 EMA and 50 RSI
+    df['ema_25'] = df['close'].ewm(span=25, adjust=False).mean()
+    df['rsi_50'] = talib.RSI(df['close'], timeperiod=50)
+   
+    # Determine trend based on EMA and RSI
+    if df['ema_25'][-1] > df['ema_25'][-2] and df['rsi_50'][-1] > 50:
+        return 'uptrend'
+    elif df['ema_25'][-1] < df['ema_25'][-2] and df['rsi_50'][-1] < 50:
+        return 'downtrend'
+    else:
+        return 'sideways'
+# Define main trading algorithm
+def main_trading_algorithm(symbol, lot_size):
+    # Get account balance
+    balance = mt5.account_info().balance
+   
+    # Calculate max risk and lot size based on risk
+    max_risk = balance * 0.01
+    lot_size = round((max_risk / 100) / (symbol_contract.point_size * lot_size))
+   
+    # Get current position
+    position = mt5.positions_get(symbol=symbol)
+   
+    # Check if position is open
+    if len(position) > 0:
+        # Determine stop loss and take profit levels based on trailing stop loss and break even
+        stop_loss = position[0].price_current - position[0].price_open
+        take_profit = position[0].price_current + position[0].price_open
+       
+        # Modify stop loss and take profit levels based on trailing stop loss and break even
+        if position[0].profit >= (balance * 0.02):
+            mt5.positions_modify(position[0].ticket, stop_loss, take_profit)
+        elif position[0].profit >= (balance * 0.01):
+            mt5.positions_modify(position[0].ticket, stop_loss, position[0].price_open)
+        else:
+            mt5.orders_delete(position[0].ticket)
+            position = []
+   
+    # Check if position is closed
+    if len(position) == 0:
+        # Determine trend based on higher timeframe confirmation
+        if trend_analysis(symbol, mt5.TIMEFRAME_D1) == 'uptrend':
+            # Buy at market price
+            mt5.orders_send(symbol=symbol, action=mt5.ORDER_TYPE_BUY, volume=lot_size, deviation=100)
+        elif trend_analysis(symbol, mt5.TIMEFRAME_D1) == 'downtrend':
+            # Sell at market price
+            mt5.orders_send(symbol=symbol, action=mt5.ORDER_TYPE_SELL, volume=lot_size, deviation
+
+// Get the account balance
+double accountBalance = AccountInfo.DoubleValue(AccountInfo.MODE_BALANCE);
+// Get the current equity
+double equity = AccountInfo.DoubleValue(AccountInfo.MODE_EQUITY);
+// Calculate the drawdown percentage
+double drawdownPercentage = (accountBalance - equity) / accountBalance * 100;
+// Check if the drawdown percentage exceeds 2%
+if (drawdownPercentage > 2)
+{
+    // Close all open trades
+    for (int i = 0; i < OrdersTotal(); i++)
+    {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+        {
+            if (OrderType() == OP_BUY || OrderType() == OP_SELL)
+            {
+                OrderClose(OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 5, clrRed);
+            }
+        }
+    }
+}
+import MetaTrader5 as mt5
+import math
+# Get the symbol of the currently selected trade symbol
+symbol = mt5.symbol_info(mt5.symbol_name(mt5.symbol_select())).name
+# Set initial stop loss distance
+initial_stop_loss = mt5.symbol_info_tick(symbol).ask - mt5.symbol_info_tick(symbol).last
+# Adjust stop loss distance based on market volatility
+def adjust_stop_loss():
+    volatility = mt5.symbol_info_tick(symbol).spread / mt5.symbol_info(symbol).point
+    stop_loss_distance = math.ceil(initial_stop_loss + volatility)
+    return stop_loss_distance
+# Set trailing stop loss based on adjusted stop loss distance
+def set_trailing_stop_loss():
+    stop_loss_distance = adjust_stop_loss()
+    mt5.order_modify(mt5.positions_get(ticket=position.ticket)[0].ticket, stoploss=mt5.symbol_info_tick(symbol).ask - stop_loss_distance)
+# Check if position has a stop loss
+def has_stop_loss(position):
+    return position.stop_loss != 0.0
+# Check if position has break even
+def has_break_even(position):
+    return position.open_price == position.stop_loss
+# Check if position has profit
+def has_profit(position):
+    return position.profit > 0.0
+# Set break even for position
+def set_break_even(position):
+    mt5.order_modify(position.ticket, stoploss=position.open_price)
+# Check if position is ready for trailing stop loss
+def is_ready_for_trailing_stop_loss(position):
+    return has_profit(position) and has_stop_loss(position) and not has_break_even(position)
+# Set trailing stop loss for all positions that meet the criteria
+def set_trailing_stop_loss_for_all_positions():
+    positions = mt5.positions_get(symbol=symbol)
+    for position in positions:
+        if is_ready_for_trailing_stop_loss(position):
+            set_trailing_stop_loss()
+# Main function
+def main():
+    set_trailing_stop_loss_for_all_positions()
+if __name__ == '__main__':
+    main()
+
+import MetaTrader5 as mt5
+import pandas as pd
+import numpy as np
+ 
+def calculate_lot_size(balance, risk_percentage):
+    lot_size = (balance * risk_percentage) / 100 / 10
+    return lot_size
+ 
+def trailing_stop_loss(price, stop_loss, trailing_stop):
+    if price - stop_loss > trailing_stop:
+        return price - trailing_stop
+    else:
+        return stop_loss
+ 
+def break_even(price, stop_loss, break_even_profit):
+    if price - stop_loss > break_even_profit:
+        return stop_loss + break_even_profit
+    else:
+        return stop_loss
+ 
+def trend_analysis(symbol):
+    mt5.symbol_select(symbol)
+ 
+    # Get historical data
+    timeframe = mt5.TIMEFRAME_H1
+    start_time = int(pd.Timestamp("2022-01-01 00:00:00").timestamp())
+    end_time = int(pd.Timestamp("2022-01-31 23:59:59").timestamp())
+    data = pd.DataFrame(mt5.copy_rates_range(symbol, timeframe, start_time, end_time))
+    data['time'] = pd.to_datetime(data['time'], unit='s')
+    data.set_index('time', inplace=True)
+ 
+    # Calculate EMA and RSI
+    data['ema25'] = data['close'].ewm(span=25).mean()
+    data['ema50'] = data['close'].ewm(span=50).mean()
+    delta = np.diff(data['close'])
+    gain = delta.copy()
+    loss = delta.copy()
+    gain[gain < 0] = 0
+    loss[loss > 0] = 0
+    data['rs_gain'] = np.append(gain, [0])
+    data['rs_loss'] = np.abs(np.append(loss, [0]))
+    data['rsi'] = 100 - (100 / (1 + (data['rs_gain'].rolling(window=14).sum() / 14) / (data['rs_loss'].rolling(window=14).sum() / 14)))
+ 
+    # Determine trend
+    if data.iloc[-1]['ema25'] > data.iloc[-2]['ema25'] and data.iloc[-1]['ema50'] > data.iloc[-2]['ema50'] and data.iloc[-1]['rsi'] > 50:
+        trend = 'up'
+    elif data.iloc[-1]['ema25'] < data.iloc[-2]['ema25'] and data.iloc[-1]['ema50'] < data.iloc[-2]['ema50'] and data.iloc[-1]['rsi'] < 50:
+        trend = 'down'
+    else:
+        trend = 'sideways'
+ 
+    return trend
+ 
+def trading_algorithm(symbol, balance):
+    mt5.initialize()
+ 
+    # Set up parameters
+    risk_percentage = 1
+    trailing_stop = 10
+    break_even_profit = 20
+ 
+    # Calculate lot size based on risk percentage
+    lot_size = calculate_lot_size(balance, risk_percentage)
+ 
+    # Check trend
+    trend = trend_analysis(symbol)
+ 
+    # Get current open positions
+    positions = mt5.positions
+// set the maximum drawdown percentage
+double maxDrawdownPercentage = 2;
+// get the current account balance
+double accountBalance = AccountBalance();
+// calculate the maximum allowable loss
+double maxLoss = accountBalance * (maxDrawdownPercentage / 100);
+// get the current drawdown
+double drawdown = accountBalance - AccountEquity();
+// check if the drawdown exceeds the maximum allowable loss
+if (drawdown >= maxLoss) {
+    // close all open positions
+    int totalPositions = OrdersTotal();
+    for (int i = totalPositions - 1; i >= 0; i--) {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+            if (OrderSymbol() == Symbol() && OrderMagicNumber() == MagicNumber) {
+                OrderClose(OrderTicket(), OrderLots(), Bid, Slippage, Red);
+            }
+        }
+    }
+}
+
+# Get the current ATR value
+atr = iATR(_Symbol, 0, 14)
+# Calculate the stop loss distance based on the ATR value and the desired risk
+stop_loss = NormalizeDouble(atr * 2, Digits)
+# Set the stop loss for the current trade
+OrderModify(OrderTicket(), OrderOpenPrice(), stop_loss, OrderTakeProfit(), 0, 0)
+
+// Initialize lot size and volatility parameters
+double lotSize = 0.01; // Starting lot size
+double volatility = iATR(_Symbol, PERIOD_D1, 14, 0); // Average True Range volatility indicator
+// Calculate appropriate lot size based on volatility
+if (volatility <= 10) {
+    lotSize = AccountBalance() * 0.01; // Use 1% of account balance for lot size
+} else if (volatility > 10 && volatility <= 20) {
+    lotSize = AccountBalance() * 0.02; // Use 2% of account balance for lot size
+} else if (volatility > 20 && volatility <= 30) {
+    lotSize = AccountBalance() * 0.03; // Use 3% of account balance for lot size
+} else if (volatility > 30 && volatility <= 40) {
+    lotSize = AccountBalance() * 0.04; // Use 4% of account balance for lot size
+} else {
+    lotSize = AccountBalance() * 0.05; // Use 5% of account balance for lot size
+}
+// Set the lot size for the next trade
+OrderSend(_Symbol, OP_BUY, lotSize, Ask, 3, NormalizeDouble(Bid - StopLoss * _Point, _Digits), NormalizeDouble(Bid + TakeProfit * _Point, _Digits), "Buy Order", MagicNumber, 0, Green);
+pip_range = abs(high - low)
+pip_range_shift = abs(high - close[1])
+true_range = max(pip_range, pip_range_shift)
+atr = talib.SMA(true_range, 14)
+dollar_atr = atr * contract_size * tick_valuemax_risk = account_balance * 0.01
+
+if lot_size < min_trade_size:
+    lot_size = min_trade_size
+elif lot_size > max_trade_size:
+    lot_size = max_trade_size
+// define maximum lot size as per Goal 3
+double maxLotSize = 0.01;
+// get current trade lot size
+double currentLotSize = OrderLots();
+// check if current lot size is greater than maximum lot size
+if(currentLotSize > maxLotSize){
+    // close the trade
+    bool closed = OrderClose(OrderTicket(), OrderLots(), MarketInfo(OrderSymbol(), MODE_BID), 3, Yellow);
+    // check if trade was closed successfully
+    if(closed){
+        Print("Trade closed due to exceeding maximum lot size.");
+    }
+}
+
